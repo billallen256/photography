@@ -31,7 +31,16 @@ def determine_capture_time(basename, extensions):
     return capture_time
 
 def get_date(file_path):
+    exif_date = get_exif_date(file_path)
+
+    if exif_date is not None:
+        return exif_date
+
+    return datetime.fromtimestamp(os.path.getmtime(file_path))
+
+def get_exif_date(file_path):
     time_field = 'Image DateTime'
+
     with open(file_path, 'rb') as f:
         try:
             tags = exifread.process_file(f, details=False, stop_tag=time_field)
