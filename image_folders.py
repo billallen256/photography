@@ -53,15 +53,14 @@ def get_exif_date(file_path):
             logging.error(str(e))
             return None
 
-def determine_output_dir(output_dir, dt):
-    new_dir = dt.strftime('%Y.%m.%d')
+def determine_output_dir(output_dir, dt, default_event):
+    new_dir = dt.strftime('%Y.%m.%d') + '.' + default_event
     return output_dir + os.sep + new_dir
 
 def make_output_dir(full_path):
     if not os.path.exists(full_path):
-        os.mkdir(full_path, mode=0o755)
-
-    return full_path
+        logging.info('Making directory {0}'.format(full_path))
+        #os.mkdir(full_path, mode=0o755)
 
 def make_name(dt):
     return output_prefix + dt.strftime('%Y%m%d%H%M%S')
@@ -111,6 +110,7 @@ def generate_move_ops(output_paths, file_groups):
 if __name__ == "__main__":
     input_directory = sys.argv[1]
     output_directory = sys.argv[2]
+    default_event = sys.argv[3]
     files = os.listdir(input_directory)
     files = ( input_directory + os.sep + f for f in files )
     files = ( f for f in files if os.path.isfile(f) )
@@ -118,12 +118,15 @@ if __name__ == "__main__":
 
     capture_times = { basename: determine_capture_time(basename, extensions) for basename, extensions in file_groups.items() }
     file_groups = { basename: extensions for basename, extensions in file_groups.items() if capture_times[basename] is not None }
-    output_dirs = { basename: determine_output_dir(output_directory, capture_times[basename]) for basename in file_groups }
+    output_dirs = { basename: determine_output_dir(output_directory, capture_times[basename], default_event) for basename in file_groups }
 
     # need to ensure the new filenames containing the capture time don't conflict
     # within their new output directories
     output_paths = { basename: output_dirs[basename]+os.sep+make_name(capture_times[basename]) for basename in file_groups }
     output_paths = transpose_dict(output_paths) # transpose so we can generate the move operations as a reduce
+
+    for d in set(output_dirs.values()):
+        make_output_dir(d)
 
     for from_path, to_path in generate_move_ops(output_paths, file_groups):
         copy_file(from_path, to_path)
