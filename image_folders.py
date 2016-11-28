@@ -2,6 +2,7 @@
 
 # vim: expandtab tabstop=4 shiftwidth=4
 
+from argparse import ArgumentParser
 from datetime import datetime
 
 import exifread
@@ -13,7 +14,6 @@ import sys
 logging.basicConfig(level=logging.INFO)
 
 min_datetime = datetime(2015, 1, 1)
-output_prefix = 'WPA'
 
 def determine_capture_time(basename, extensions):
     capture_time = None
@@ -54,7 +54,12 @@ def get_exif_date(file_path):
             return None
 
 def determine_output_dir(output_dir, dt, default_event):
-    new_dir = dt.strftime('%Y.%m.%d') + '.' + default_event
+    new_dir = dt.strftime('%Y.%m.%d')
+    default_event = default_event.strip()
+
+    if len(default_event) > 0:
+        new_dir += '.' + default_event
+
     return output_dir + os.sep + new_dir
 
 def make_output_dir(full_path):
@@ -62,8 +67,8 @@ def make_output_dir(full_path):
         logging.info('Making directory {0}'.format(full_path))
         #os.mkdir(full_path, mode=0o755)
 
-def make_name(dt):
-    return output_prefix + dt.strftime('%Y%m%d%H%M%S')
+def make_name(prefix, dt):
+    return prefix.strip() + dt.strftime('%Y%m%d%H%M%S')
 
 def copy_file(from_path, to_path):
     logging.info('Copying {0} to {1}'.format(from_path, to_path))
@@ -107,10 +112,23 @@ def generate_move_ops(output_paths, file_groups):
                 yield (from_path, to_path)
             seq_counter += 1
 
+def setup_argparser():
+    parser = ArgumentParser(description='Imports a directory of photos into dated directories with dated filenames.')
+    parser.add_argument('--input_dir', required=True, help='Directory to read files from (non-recursive)')
+    parser.add_argument('--output_dir', required=True, help='Directory to place dated directories and files')
+    parser.add_argument('--prefix', default='', required=False, help='Prefix that will be placed onto the name of each file, such as photographer initials')
+    parser.add_argument('--default_event', default='', required=False, help='Default event name to place at the end of each dated directory name')
+    parsed = parser.parse_args()
+    return parsed
+
 if __name__ == "__main__":
-    input_directory = sys.argv[1]
-    output_directory = sys.argv[2]
-    default_event = sys.argv[3]
+    args = setup_argparser()
+    input_directory = args.input_dir
+    output_directory = args.output_dir
+
+    if input_directory == output_directory:
+        logging.error('Input directory cannot be the same as the output directory')
+
     files = os.listdir(input_directory)
     files = ( input_directory + os.sep + f for f in files )
     files = ( f for f in files if os.path.isfile(f) )
@@ -118,11 +136,11 @@ if __name__ == "__main__":
 
     capture_times = { basename: determine_capture_time(basename, extensions) for basename, extensions in file_groups.items() }
     file_groups = { basename: extensions for basename, extensions in file_groups.items() if capture_times[basename] is not None }
-    output_dirs = { basename: determine_output_dir(output_directory, capture_times[basename], default_event) for basename in file_groups }
+    output_dirs = { basename: determine_output_dir(output_directory, capture_times[basename], args.default_event) for basename in file_groups }
 
     # need to ensure the new filenames containing the capture time don't conflict
     # within their new output directories
-    output_paths = { basename: output_dirs[basename]+os.sep+make_name(capture_times[basename]) for basename in file_groups }
+    output_paths = { basename: output_dirs[basename]+os.sep+make_name(args.prefix, capture_times[basename]) for basename in file_groups }
     output_paths = transpose_dict(output_paths) # transpose so we can generate the move operations as a reduce
 
     for d in set(output_dirs.values()):
