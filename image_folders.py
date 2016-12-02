@@ -62,17 +62,21 @@ def determine_output_dir(output_dir, dt, default_event):
 
     return output_dir + os.sep + new_dir
 
-def make_output_dir(full_path):
+def make_output_dir(full_path, pretend=False):
     if not os.path.exists(full_path):
         logging.info('Making directory {0}'.format(full_path))
-        #os.mkdir(full_path, mode=0o755)
+
+        if not pretend:
+            os.mkdir(full_path, mode=0o755)
 
 def make_name(prefix, dt):
     return prefix.strip() + dt.strftime('%Y%m%d%H%M%S')
 
-def copy_file(from_path, to_path):
+def copy_file(from_path, to_path, pretend=False):
     logging.info('Copying {0} to {1}'.format(from_path, to_path))
-    #shutil.copy2(file_path, possible_path)
+
+    if not pretend:
+        shutil.copy2(from_path, to_path)
 
 def group_files(files):
     groups = {}
@@ -101,7 +105,7 @@ def transpose_dict(d):
 
 def generate_move_ops(output_paths, file_groups):
     for output_path, basenames in output_paths.items():
-        seq = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        seq = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ' #TODO make this a generator to handle infinite conflicts
         seq_counter = 0
 
         # sort the basenames to preserve sequencing of files captured in the same second
@@ -114,10 +118,12 @@ def generate_move_ops(output_paths, file_groups):
 
 def setup_argparser():
     parser = ArgumentParser(description='Imports a directory of photos into dated directories with dated filenames.')
+    parser.set_defaults(pretend=False)
     parser.add_argument('--input_dir', required=True, help='Directory to read files from (non-recursive)')
     parser.add_argument('--output_dir', required=True, help='Directory to place dated directories and files')
     parser.add_argument('--prefix', default='', required=False, help='Prefix that will be placed onto the name of each file, such as photographer initials')
     parser.add_argument('--default_event', default='', required=False, help='Default event name to place at the end of each dated directory name')
+    parser.add_argument('--pretend', dest='pretend', action='store_true', help="Don't actually execute copy commands, just list them out")
     parsed = parser.parse_args()
     return parsed
 
@@ -144,7 +150,7 @@ if __name__ == "__main__":
     output_paths = transpose_dict(output_paths) # transpose so we can generate the move operations as a reduce
 
     for d in set(output_dirs.values()):
-        make_output_dir(d)
+        make_output_dir(d, pretend=args.pretend)
 
     for from_path, to_path in generate_move_ops(output_paths, file_groups):
-        copy_file(from_path, to_path)
+        copy_file(from_path, to_path, pretend=args.pretend)
