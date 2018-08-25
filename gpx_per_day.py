@@ -1,7 +1,7 @@
 # vim: expandtab tabstop=4 shiftwidth=4
 
 from datetime import datetime
-from xml.etree import ElementTree
+from xml.etree import ElementTree as ET
 
 import os
 import sys
@@ -28,6 +28,16 @@ def get_date_for_trkseg(trkseg):
 
     return max_date
 
+def remove_trkseg_namespaces(trkseg):
+    trkseg.tag = 'trkseg'
+
+    for trkpt in trkseg:
+        trkpt.tag = 'trkpt'
+        ele = find_first_child_ending_with(trkpt, 'ele')
+        ele.tag = 'ele'
+        time = find_first_child_ending_with(trkpt, 'time')
+        time.tag = 'time'
+
 class Track:
     def __init__(self, date):
         self.date = date
@@ -37,20 +47,24 @@ class Track:
         return 'Track for {0} with {1} segments'.format(self.date, len(self.track_segments))
 
     def add_track_segment(self, ts):
+        remove_trkseg_namespaces(ts)
         self.track_segments.append(ts)
 
     def xml(self):
-        ret = b''
+        gpx = ET.Element('gpx', attrib={'xmlns':'http://www.topografix.com/GPX/1/0', 'version':'1.0'})
+        trk = ET.SubElement(gpx, 'trk')
+        name = ET.SubElement(trk, 'name')
+        name.text = str(self.date)
 
         for track_segment in self.track_segments:
-            ret += ElementTree.tostring(track_segment, encoding='utf8')
+            trk.append(track_segment)
 
-        return ret
+        return ET.tostring(gpx, encoding='utf8')
 
 if __name__ == "__main__":
     infile_name = sys.argv[1]
     outfile_base_name = sys.argv[2]
-    orig_root = ElementTree.parse(infile_name).getroot()
+    orig_root = ET.parse(infile_name).getroot()
     tracks = {}
 
     for trk in find_children_ending_with(orig_root, 'trk'):
