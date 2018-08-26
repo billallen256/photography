@@ -51,7 +51,14 @@ class Track:
         self.track_segments.append(ts)
 
     def xml(self):
-        gpx = ET.Element('gpx', attrib={'xmlns':'http://www.topografix.com/GPX/1/0', 'version':'1.0'})
+        gpx = ET.Element('gpx', attrib={
+            'version': '1.0',
+            'creator': 'https://github.com/gershwinlabs/photography/blob/master/gpx_per_day.py',
+            'xmlns': 'http://www.topografix.com/GPX/1/0',
+            'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+            'xsi:schemaLocation': 'http://www.topografix.com/GPX/1/0 http://www.topografix.com/GPX/1/0/gpx.xsd',
+        })
+
         trk = ET.SubElement(gpx, 'trk')
         name = ET.SubElement(trk, 'name')
         name.text = str(self.date)
@@ -59,7 +66,7 @@ class Track:
         for track_segment in self.track_segments:
             trk.append(track_segment)
 
-        return ET.tostring(gpx, encoding='utf8')
+        return ET.tostring(gpx, encoding='UTF-8')
 
 if __name__ == "__main__":
     infile_name = sys.argv[1]
