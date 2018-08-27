@@ -1,5 +1,18 @@
 # vim: expandtab tabstop=4 shiftwidth=4
 
+'''
+I dumped two years of tracklogs off my Garmin eTrex Venture HC
+using GPSBabel to create a big GPX file.  I needed a way to take
+that big GPX file and break it down into a bunch of daily GPX files,
+so I created this script.  It's more of a hack than I would like,
+especially around XML namespaces; ElementTree doesn't eat its own
+dogfood, so parsed input doesn't preserve each attribute's
+namespace, causing the ElementTree.write() to error out when the
+default_namespace is set.
+
+$ python3 gpx_per_day.py <input_gpx_file> <prefix_to_use_for_output_gpx_files>
+'''
+
 from datetime import datetime
 from xml.etree import ElementTree as ET
 
