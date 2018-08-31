@@ -1,6 +1,8 @@
 # vim: expandtab tabstop=4 shiftwidth=4
 
 '''
+$ python3 gpx_per_day.py <input_gpx_file> <prefix_to_use_for_output_gpx_files> [utc_offset_in_hours]
+
 I dumped two years of tracklogs off my Garmin eTrex Venture HC
 using GPSBabel to create a big GPX file.  I needed a way to take
 that big GPX file and break it down into a bunch of daily GPX files,
@@ -9,11 +11,9 @@ especially around XML namespaces; ElementTree doesn't eat its own
 dogfood, so parsed input doesn't preserve each attribute's
 namespace, causing the ElementTree.write() to error out when the
 default_namespace is set.
-
-$ python3 gpx_per_day.py <input_gpx_file> <prefix_to_use_for_output_gpx_files>
 '''
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from xml.etree import ElementTree as ET
 
 import os
@@ -21,12 +21,14 @@ import sys
 
 namespaces = { 'gpx': 'http://www.topografix.com/GPX/1/0' }
 
-def get_date_for_trkseg(trkseg):
+def get_date_for_trkseg(trkseg, utc_offset):
     max_date = datetime(1970, 1, 1)
+    utc_offset = timedelta(hours=utc_offset)
 
     for trkpt in trkseg:
         date_elem = trkpt.find('gpx:time', namespaces)
         date = datetime.strptime(date_elem.text, '%Y-%m-%dT%H:%M:%SZ')
+        date += utc_offset
 
         if date > max_date:
             max_date = date
@@ -73,15 +75,37 @@ class Track:
 
         return ET.tostring(gpx, encoding='UTF-8')
 
+def parse_utc_offset(argv):
+    argv = argv.strip()
+
+    try:
+        offset = int(argv)
+    except ValueError:
+        return 0, 'Invalid UTC offset'
+
+    if offset < -12 or offset > 12:
+        return 0, 'UTC offset too large'
+
+    return offset, None
+
 if __name__ == "__main__":
     infile_name = sys.argv[1]
     outfile_base_name = sys.argv[2]
+    utc_offset = 0
+
+    if len(sys.argv) == 4:
+        utc_offset, err = parse_utc_offset(sys.argv[3])
+
+        if err != None:
+            print(err)
+            sys.exit(1)
+
     orig_root = ET.parse(infile_name).getroot()
     tracks = {}
 
     for trk in orig_root.findall('gpx:trk', namespaces):
         for trkseg in trk.findall('gpx:trkseg', namespaces):
-            dt = get_date_for_trkseg(trkseg)
+            dt = get_date_for_trkseg(trkseg, utc_offset)
 
             if dt.date() in tracks:
                 tracks[dt.date()].add_track_segment(trkseg)
