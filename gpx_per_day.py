@@ -19,21 +19,13 @@ from xml.etree import ElementTree as ET
 import os
 import sys
 
-def find_children_ending_with(elem, s):
-    for child in elem:
-        if child.tag.endswith(s):
-            yield child
-
-def find_first_child_ending_with(elem, s):
-    for child in elem:
-        if child.tag.endswith(s):
-            return child
+namespaces = { 'gpx': 'http://www.topografix.com/GPX/1/0' }
 
 def get_date_for_trkseg(trkseg):
     max_date = datetime(1970, 1, 1)
 
     for trkpt in trkseg:
-        date_elem = find_first_child_ending_with(trkpt, 'time')
+        date_elem = trkpt.find('gpx:time', namespaces)
         date = datetime.strptime(date_elem.text, '%Y-%m-%dT%H:%M:%SZ')
 
         if date > max_date:
@@ -46,9 +38,9 @@ def remove_trkseg_namespaces(trkseg):
 
     for trkpt in trkseg:
         trkpt.tag = 'trkpt'
-        ele = find_first_child_ending_with(trkpt, 'ele')
+        ele = trkpt.find('gpx:ele', namespaces)
         ele.tag = 'ele'
-        time = find_first_child_ending_with(trkpt, 'time')
+        time = trkpt.find('gpx:time', namespaces)
         time.tag = 'time'
 
 class Track:
@@ -87,8 +79,8 @@ if __name__ == "__main__":
     orig_root = ET.parse(infile_name).getroot()
     tracks = {}
 
-    for trk in find_children_ending_with(orig_root, 'trk'):
-        for trkseg in find_children_ending_with(trk, 'trkseg'):
+    for trk in orig_root.findall('gpx:trk', namespaces):
+        for trkseg in trk.findall('gpx:trkseg', namespaces):
             dt = get_date_for_trkseg(trkseg)
 
             if dt.date() in tracks:
