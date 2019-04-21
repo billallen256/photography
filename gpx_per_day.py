@@ -26,14 +26,21 @@ def get_date_for_trkseg(trkseg, utc_offset, epoch_offset):
     epoch_offset = timedelta(days=1024*7*epoch_offset)
 
     for trkpt in trkseg:
-        date_elem = trkpt.find('gpx:time', namespaces)
-        date = datetime.strptime(date_elem.text, '%Y-%m-%dT%H:%M:%SZ')
+        time_elem = trkpt.find('gpx:time', namespaces)
+        date = datetime.strptime(time_elem.text, '%Y-%m-%dT%H:%M:%SZ')
         date += utc_offset + epoch_offset
 
         if date > max_date:
             max_date = date
 
     return max_date
+
+def apply_epoch_offset(trkseg, epoch_offset):
+    for trkpt in trkseg:
+        time_elem = trkpt.find('gpx:time', namespaces)
+        orig_time = datetime.strptime(time_elem.text, '%Y-%m-%dT%H:%M:%SZ')
+        new_time = orig_time + timedelta(days=1024*7*epoch_offset)
+        time_elem.text = new_time.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def remove_trkseg_namespaces(trkseg):
     trkseg.tag = 'trkseg'
@@ -53,7 +60,8 @@ class Track:
     def __str__(self):
         return 'Track for {0} with {1} segments'.format(self.date, len(self.track_segments))
 
-    def add_track_segment(self, ts):
+    def add_track_segment(self, ts, epoch_offset):
+        apply_epoch_offset(ts, epoch_offset)
         remove_trkseg_namespaces(ts)
         self.track_segments.append(ts)
 
@@ -109,10 +117,10 @@ if __name__ == "__main__":
             dt = get_date_for_trkseg(trkseg, utc_offset, epoch_offset)
 
             if dt.date() in tracks:
-                tracks[dt.date()].add_track_segment(trkseg)
+                tracks[dt.date()].add_track_segment(trkseg, epoch_offset)
             else:
                 new_track = Track(dt.date())
-                new_track.add_track_segment(trkseg)
+                new_track.add_track_segment(trkseg, epoch_offset)
                 tracks[dt.date()] = new_track
 
     for date, track in tracks.items():
