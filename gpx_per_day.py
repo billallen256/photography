@@ -101,7 +101,7 @@ def setup_argparser():
 if __name__ == "__main__":
     args = setup_argparser()
     infile_name = args.input
-    outfile_prefix = args.prefix
+    outfile_prefix = args.prefix.strip()
     utc_offset, err = check_utc_offset(args.utc_offset)
     epoch_offset = args.epoch_offset
     
@@ -125,7 +125,13 @@ if __name__ == "__main__":
 
     for date, track in tracks.items():
         dt = datetime(date.year, date.month, date.day)
-        outfile_name = '{0}-{1}.gpx'.format(outfile_prefix, dt.strftime('%Y%m%d'))
+
+        sep = ''
+
+        if len(outfile_prefix) > 0:
+            sep = '-'
+
+        outfile_name = '{0}{1}{2}.gpx'.format(outfile_prefix, sep, dt.strftime('%Y%m%d'))
 
         if os.path.exists(outfile_name):
             print('{0} already exists.  Skipping...'.format(outfile_name))
