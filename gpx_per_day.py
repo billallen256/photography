@@ -91,21 +91,34 @@ def check_utc_offset(offset):
 
 def setup_argparser():
     parser = ArgumentParser(description='Breaks a single GPX file into separate GPX files for each day.')
-    parser.add_argument('--input', required=True, help='Input GPX file')
-    parser.add_argument('--prefix', default='', required=False, help='Prefix that will be placed onto the name of each file')
-    parser.add_argument('--utc_offset', default=0, type=int, required=False, help="UTC offset in hours, in case you're far from the prime meridian")
-    parser.add_argument('--epoch_offset', default=0, type=int, required=False, help='Epoch offset in units of 1024-weeks (10-bits week count from ICD-200)')
+    parser.add_argument('--input',
+                        required=True,
+                        help='Input GPX file')
+    parser.add_argument('--prefix',
+                        default='',
+                        required=False,
+                        help='Prefix that will be placed onto the name of each file')
+    parser.add_argument('--utc_offset',
+                        default=0,
+                        type=int,
+                        required=False,
+                        help="UTC offset in hours, in case you're far from the prime meridian")
+    parser.add_argument('--epoch_offset',
+                        default=0,
+                        type=int,
+                        required=False,
+                        help='Epoch offset in units of 1024-weeks (10-bits week count from ICD-200)')
     parsed = parser.parse_args()
     return parsed
 
-if __name__ == "__main__":
+def main():
     args = setup_argparser()
     infile_name = args.input
     outfile_prefix = args.prefix.strip()
     utc_offset, err = check_utc_offset(args.utc_offset)
     epoch_offset = args.epoch_offset
-    
-    if err != None:
+
+    if err is not None:
         print(err)
         sys.exit(1)
 
@@ -141,3 +154,6 @@ if __name__ == "__main__":
 
         with open(outfile_name, 'wb') as f:
             f.write(track.xml())
+
+if __name__ == "__main__":
+    main()
