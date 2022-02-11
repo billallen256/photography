@@ -10,54 +10,75 @@ so I created this script.
 from argparse import ArgumentParser
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterable
 from xml.etree import ElementTree as ET
 
-def get_date_for_trkseg(trkseg, utc_offset, epoch_offset, namespaces) -> datetime:
-    max_date = datetime(1970, 1, 1)
-    utc_offset = timedelta(hours=utc_offset)
-    epoch_offset = timedelta(days=1024*7*epoch_offset)
+def offset_datetime(dt: datetime, epoch_offset: int) -> datetime:
+    epoch_offset_delta = timedelta(days=1024*7*epoch_offset)
+    return dt + epoch_offset_delta
 
-    for trkpt in trkseg:
-        time_elem = trkpt.find('gpx:time', namespaces)
-        dt = datetime.strptime(time_elem.text, '%Y-%m-%dT%H:%M:%SZ')
-        dt += utc_offset + epoch_offset
+def trkpt_has_time(trkpt: ET.ElementTree, namespaces) -> bool:
+    return trkpt.find('gpx:time', namespaces) is not None
 
-        if dt > max_date:
-            max_date = dt
+def trkpt_datetime(trkpt: ET.ElementTree, namespaces: Dict[str, str]) -> datetime:
+    time_elem = trkpt.find('gpx:time', namespaces)
+    return datetime.strptime(time_elem.text, '%Y-%m-%dT%H:%M:%SZ')
 
-    return max_date
+def should_separate(trkpt1: ET.ElementTree, trkpt2: ET.ElementTree, namespaces: Dict[str, str]) -> bool:
+    '''
+    Returns True if the points are separated by a significant
+    time such that a new trkseg should be started.
+    '''
+    time1 = trkpt_datetime(trkpt1, namespaces)
+    time2 = trkpt_datetime(trkpt2, namespaces)
 
-def apply_epoch_offset(trkseg, epoch_offset, namespaces):
-    for trkpt in trkseg:
-        time_elem = trkpt.find('gpx:time', namespaces)
-        orig_time = datetime.strptime(time_elem.text, '%Y-%m-%dT%H:%M:%SZ')
-        new_time = orig_time + timedelta(days=1024*7*epoch_offset)
-        time_elem.text = new_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+    if time2 < time1:
+        print('Starting new track because next point is before previous point')
+        return True
 
-def remove_trkseg_namespaces(trkseg, namespaces):
-    trkseg.tag = 'trkseg'
+    td = time2 - time1
 
-    for trkpt in trkseg:
-        trkpt.tag = 'trkpt'
-        ele = trkpt.find('gpx:ele', namespaces)
-        ele.tag = 'ele'
-        time = trkpt.find('gpx:time', namespaces)
-        time.tag = 'time'
+    if td > timedelta(hours=3):
+        print(f'Starting new track because next point is {td} from previous point')
+        return True
+
+    return False
+
+def get_trk_name(trk: ET.ElementTree, namespaces) -> str:
+    name = trk.find('gpx:name', namespaces)
+    return name.text
+
+def get_trkpts(root: Iterable[ET.ElementTree], namespaces: Dict[str, str]) -> Iterable[ET.ElementTree]:
+    for trk in root.findall('gpx:trk', namespaces):
+        print(f'Found track {get_trk_name(trk, namespaces)}')
+
+        for trkseg in trk.findall('gpx:trkseg', namespaces):
+            for trkpt in trkseg:
+                yield trkpt
+
+def remove_trkpt_namespaces(trkpt: ET.ElementTree, namespaces: Dict[str, str]) -> None:
+    '''
+    By default the each trkpt and their sub-elements would have an
+    "ns0:" prefix on them.  We don't want that, so we set the tag
+    manually.
+    '''
+    trkpt.tag = 'trkpt'
+    ele = trkpt.find('gpx:ele', namespaces)
+    ele.tag = 'ele'
+    time = trkpt.find('gpx:time', namespaces)
+    time.tag = 'time'
 
 class Track:
     def __init__(self, date, namespaces):
         self.date = date
         self.namespaces = namespaces
-        self.track_segments = []
+        self.trkpts = []
 
     def __str__(self):
-        return 'Track for {0} with {1} segments'.format(self.date, len(self.track_segments))
+        return f'Track for {self.date} with {len(self.trkpts)} trkpts'
 
-    def add_track_segment(self, trkseg, epoch_offset):
-        apply_epoch_offset(trkseg, epoch_offset, self.namespaces)
-        remove_trkseg_namespaces(trkseg, self.namespaces)
-        self.track_segments.append(trkseg)
+    def add_trkpt(self, trkpt):
+        self.trkpts.append(trkpt)
 
     def xml(self):
         gpx = ET.Element('gpx', attrib={
@@ -71,15 +92,19 @@ class Track:
         trk = ET.SubElement(gpx, 'trk')
         name = ET.SubElement(trk, 'name')
         name.text = str(self.date)
+        trkseg = ET.SubElement(trk, 'trkseg')
 
-        for track_segment in self.track_segments:
-            trk.append(track_segment)
+        for trkpt in self.trkpts:
+            remove_trkpt_namespaces(trkpt, self.namespaces)
+            trkseg.append(trkpt)
 
         return ET.tostring(gpx, encoding='UTF-8')
 
-def check_utc_offset(offset: int) -> None:
-    if offset < -12 or offset > 12:
-        raise Exception('UTC offset too large')
+    def write(self, outfile_suffix: str) -> None:
+        file_dt = datetime(self.date.year, self.date.month, self.date.day)
+        outfile_path = get_unique_path(file_dt, outfile_suffix)
+        print(f'Writing {outfile_path} with {len(self.trkpts)} points')
+        outfile_path.write_bytes(self.xml())
 
 def setup_argparser():
     parser = ArgumentParser(description='Breaks a single GPX file into separate GPX files for each day.')
@@ -90,11 +115,6 @@ def setup_argparser():
                         default='',
                         required=False,
                         help='Suffix that will be placed onto the name of each file')
-    parser.add_argument('--utc_offset',
-                        default=0,
-                        type=int,
-                        required=False,
-                        help="UTC offset in hours, in case you're far from the prime meridian")
     parser.add_argument('--epoch_offset',
                         default=0,
                         type=int,
@@ -113,11 +133,32 @@ def gpx_schema_namespace(namespaces: Dict[str, str]) -> str:
 
     raise Exception(f'Could not find gpx namespace in {namespaces}')
 
+def get_unique_path(file_dt: datetime, suffix: str) -> Path:
+    dedup_suffix = ''
+    sep = ''
+
+    if len(suffix) > 0:
+        sep = '-'
+
+    while True:
+        outfile_path = Path('{}{}{}{}.gpx'.format(file_dt.strftime('%Y%m%d'), sep, suffix, dedup_suffix))
+
+        if outfile_path.exists() and dedup_suffix == '':
+            dedup_suffix = 1
+            continue
+
+        if outfile_path.exists():
+            dedup_suffix += 1
+            continue
+
+        break
+
+    return outfile_path
+
 def main():
     args = setup_argparser()
     infile_path = Path(args.input)
     outfile_suffix = args.suffix.strip()
-    check_utc_offset(args.utc_offset)
     epoch_offset = args.epoch_offset
 
     gpx_namespace = gpx_schema_namespace(get_namespaces(infile_path))
@@ -125,35 +166,26 @@ def main():
     namespaces = {'gpx': gpx_namespace}
 
     orig_root = ET.parse(infile_path).getroot()
-    tracks = {}
+    prev_trkpt = None
+    current_track = None
 
-    for trk in orig_root.findall('gpx:trk', namespaces):
-        for trkseg in trk.findall('gpx:trkseg', namespaces):
-            dt = get_date_for_trkseg(trkseg, args.utc_offset, epoch_offset, namespaces)
-
-            if dt.date() in tracks:
-                tracks[dt.date()].add_track_segment(trkseg, epoch_offset)
-            else:
-                new_track = Track(dt.date(), namespaces)
-                new_track.add_track_segment(trkseg, epoch_offset)
-                tracks[dt.date()] = new_track
-
-    for date, track in tracks.items():
-        dt = datetime(date.year, date.month, date.day)
-
-        sep = ''
-
-        if len(outfile_suffix) > 0:
-            sep = '-'
-
-        outfile_path = Path('{}{}{}.gpx'.format(dt.strftime('%Y%m%d'), sep, outfile_suffix))
-
-        if outfile_path.exists():
-            print(f'{outfile_path} already exists.  Skipping...')
+    for trkpt in get_trkpts(orig_root, namespaces):
+        if not trkpt_has_time(trkpt, namespaces):
             continue
 
-        print(outfile_path)
-        outfile_path.write_bytes(track.xml())
+        if prev_trkpt is None or (prev_trkpt is not None and should_separate(prev_trkpt, trkpt, namespaces)):
+            if current_track is not None:
+                current_track.write(outfile_suffix)
+
+            current_track = Track(
+                offset_datetime(trkpt_datetime(trkpt, namespaces), epoch_offset),
+                namespaces,
+            )
+
+        current_track.add_trkpt(trkpt)
+        prev_trkpt = trkpt
+
+    current_track.write(outfile_suffix)
 
 if __name__ == "__main__":
     main()
