@@ -8,10 +8,25 @@ so I created this script.
 '''
 
 from argparse import ArgumentParser
+from csv import DictReader
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Iterable
+from typing import Dict, Iterable, List
 from xml.etree import ElementTree as ET
+
+from georgio import great_circle_distance
+
+@dataclass
+class Point:
+    latitude: float
+    longitude: float
+
+@dataclass
+class PrivacyZone:
+    name: str
+    radius_meters: float
+    point: Point
 
 def offset_datetime(dt: datetime, epoch_offset: int) -> datetime:
     epoch_offset_delta = timedelta(days=1024*7*epoch_offset)
@@ -38,7 +53,7 @@ def should_separate(trkpt1: ET.ElementTree, trkpt2: ET.ElementTree, namespaces: 
 
     td = time2 - time1
 
-    if td > timedelta(hours=3):
+    if td > timedelta(minutes=90):
         print(f'Starting new track because next point is {td} from previous point')
         return True
 
@@ -115,6 +130,10 @@ def setup_argparser():
                         default='',
                         required=False,
                         help='Suffix that will be placed onto the name of each file')
+    parser.add_argument('--privacy_zones',
+                        default='',
+                        required=False,
+                        help='Path to CSV file containing privacy zones (name,radius_meters,latitude,longitude)')
     parser.add_argument('--epoch_offset',
                         default=0,
                         type=int,
@@ -155,10 +174,55 @@ def get_unique_path(file_dt: datetime, suffix: str) -> Path:
 
     return outfile_path
 
+def get_privacy_zones(csv_file_path_str: str) -> List[PrivacyZone]:
+    if csv_file_path_str == '':
+        return []
+
+    csv_file_path = Path(csv_file_path_str)
+    privacy_zones = []
+
+    if not csv_file_path.exists():
+        raise Exception(f'Privacy zone CSV files does not exist at {csv_file_path_str}')
+
+    with csv_file_path.open('r') as csv_file:
+        reader = DictReader(csv_file)
+
+        for entry in reader:
+            privacy_zones.append(
+                PrivacyZone(
+                    entry['name'],
+                    float(entry['radius_meters']),
+                    Point(float(entry['latitude']), float(entry['longitude'])),
+            ))
+
+    return privacy_zones
+
+def in_privacy_zone(point: Point, privacy_zone: PrivacyZone) -> bool:
+    return great_circle_distance(
+        point.longitude,
+        point.latitude,
+        privacy_zone.point.longitude,
+        privacy_zone.point.latitude) <= privacy_zone.radius_meters
+
+def in_any_privacy_zone(point: Point, privacy_zones: List[PrivacyZone]) -> bool:
+    for privacy_zone in privacy_zones:
+        if in_privacy_zone(point, privacy_zone):
+            print(f'Found {point} in {privacy_zone.name}')
+            return True
+
+    return False
+
+def trkpt_to_point(trkpt) -> Point:
+    return Point(
+        float(trkpt.attrib['lat']),
+        float(trkpt.attrib['lon']),
+    )
+
 def main():
     args = setup_argparser()
     infile_path = Path(args.input)
     outfile_suffix = args.suffix.strip()
+    privacy_zones = get_privacy_zones(args.privacy_zones)
     epoch_offset = args.epoch_offset
 
     gpx_namespace = gpx_schema_namespace(get_namespaces(infile_path))
@@ -171,6 +235,9 @@ def main():
 
     for trkpt in get_trkpts(orig_root, namespaces):
         if not trkpt_has_time(trkpt, namespaces):
+            continue
+
+        if in_any_privacy_zone(trkpt_to_point(trkpt), privacy_zones):
             continue
 
         if prev_trkpt is None or (prev_trkpt is not None and should_separate(prev_trkpt, trkpt, namespaces)):
