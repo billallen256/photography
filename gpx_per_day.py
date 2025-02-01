@@ -53,8 +53,21 @@ def should_separate(trkpt1: ET.ElementTree, trkpt2: ET.ElementTree, namespaces: 
 
     td = time2 - time1
 
-    if td > timedelta(minutes=90):
+    if td > timedelta(minutes=60):
         print(f'Starting new track because next point is {td} from previous point')
+        return True
+
+    point1 = trkpt_to_point(trkpt1)
+    point2 = trkpt_to_point(trkpt2)
+    distance = great_circle_distance(
+        point1.longitude,
+        point1.latitude,
+        point2.longitude,
+        point2.latitude,
+    )
+
+    if distance > 1000:
+        print(f'Starting new track because next point is {distance} meters from previous point')
         return True
 
     return False
