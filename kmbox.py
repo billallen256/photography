@@ -11,21 +11,39 @@ def render_placemark(center_lat, center_lon, name):
     west, south, east, north = bounding_box_for_point(center_lon, center_lat, 500)
 
     return f'''
-  <Placemark>
-    <name>{name}</name>
-    <styleUrl>#yellow</styleUrl>
-    <LineString>
-      <extrude>1</extrude>
-      <altitudeMode>relativeToGround</altitudeMode>
-          <coordinates>
-            {east},{north},100
-            {east},{south},100
-            {west},{south},100
-            {west},{north},100
-            {east},{north},100
-          </coordinates>
-    </LineString>
-  </Placemark>
+      <Placemark>
+        <name>{name}</name>
+        <styleUrl>#boxStyle</styleUrl>
+        <MultiGeometry>
+          <LineString>
+            <extrude>0</extrude>
+            <altitudeMode>relativeToGround</altitudeMode>
+                <coordinates>
+                  {west},{center_lat},1
+                  {east},{center_lat},1
+                </coordinates>
+          </LineString>
+          <LineString>
+            <extrude>0</extrude>
+            <altitudeMode>relativeToGround</altitudeMode>
+                <coordinates>
+                  {center_lon},{north},1
+                  {center_lon},{south},1
+                </coordinates>
+          </LineString>
+          <LineString>
+            <extrude>0</extrude>
+            <altitudeMode>relativeToGround</altitudeMode>
+                <coordinates>
+                  {east},{north},1
+                  {east},{south},1
+                  {west},{south},1
+                  {west},{north},1
+                  {east},{north},1
+                </coordinates>
+          </LineString>
+        </MultiGeometry>
+      </Placemark>
   '''
 
 def main():
@@ -34,19 +52,21 @@ def main():
 
     xml = '''<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
-  <Style id="yellow">
+  <Document>
+    <Style id="boxStyle">
       <LineStyle>
-        <color>7f00ffff</color>
-        <width>4</width>
+        <color>ff0000ff</color>
+        <width>2</width>
       </LineStyle>
-  </Style>
-  <Folder>
+    </Style>
+    <Folder>
     '''
 
     for line in lines:
         if not line:
             continue
 
+        # skip over column name header
         if line.startswith('lat'):
             continue
 
@@ -56,7 +76,7 @@ def main():
 
         xml += render_placemark(lat, lon, name)
 
-    xml += '</Folder></kml>'
+    xml += '</Folder></Document></kml>'
     print(xml)
 
 
