@@ -5,8 +5,6 @@ import sys
 
 from georgio import bounding_box_for_point
 
-DISTANCE = sqrt(500**2 + 500**2)
-
 def render_placemark(center_lat, center_lon, name):
     west, south, east, north = bounding_box_for_point(center_lon, center_lat, 500)
 
